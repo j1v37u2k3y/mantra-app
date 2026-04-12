@@ -2,13 +2,38 @@ import express from "express";
 import { existsSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join, resolve } from "path";
+import { homedir } from "os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number.parseInt(process.env.PORT ?? "3174", 10);
 
-const mantras = JSON.parse(
-  readFileSync(join(__dirname, "src", "data", "mantras.json"), "utf8")
-);
+const LOCAL_MANTRAS_PATH =
+  process.env.MANTRA_FILE ?? join(homedir(), ".config", "mantra", "mantras.json");
+
+function loadMantras() {
+  const bundled = JSON.parse(
+    readFileSync(join(__dirname, "src", "data", "mantras.json"), "utf8")
+  );
+
+  if (existsSync(LOCAL_MANTRAS_PATH)) {
+    try {
+      const local = JSON.parse(readFileSync(LOCAL_MANTRAS_PATH, "utf8"));
+      if (Array.isArray(local)) {
+        const merged = [...bundled, ...local];
+        console.log(
+          `Loaded ${local.length} local mantra(s) from ${LOCAL_MANTRAS_PATH} (${merged.length} total)`
+        );
+        return merged;
+      }
+    } catch (err) {
+      console.warn(`Warning: could not parse ${LOCAL_MANTRAS_PATH}:`, err.message);
+    }
+  }
+
+  return bundled;
+}
+
+const mantras = loadMantras();
 
 export const app = express();
 
@@ -43,5 +68,6 @@ const isMain = resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)
 if (isMain) {
   app.listen(PORT, () => {
     console.log(`Mantra API running on http://localhost:${PORT}`);
+    console.log(`Local mantras: ${LOCAL_MANTRAS_PATH}`);
   });
 }
