@@ -174,7 +174,7 @@ xset s off
 sleep 8
 
 # Launch in kiosk mode
-chromium ${KIOSK_URL} --kiosk --noerrdialogs --disable-infobars --no-first-run --enable-features=OverlayScrollbar --start-maximized --window-size=480,320 &
+chromium ${KIOSK_URL} --kiosk --noerrdialogs --disable-infobars --no-first-run --password-store=basic --enable-features=OverlayScrollbar --start-maximized --window-size=480,320 &
 EOF
 
 chown -R "${REAL_USER}:${REAL_USER}" "${AUTOSTART_DIR}"
@@ -187,7 +187,7 @@ xset -dpms
 xset s noblank
 xset s off
 sleep 8
-chromium-browser --kiosk --noerrdialogs --disable-infobars --no-first-run --window-size=480,320 "${KIOSK_URL}" &
+chromium-browser --kiosk --noerrdialogs --disable-infobars --no-first-run --password-store=basic --window-size=480,320 "${KIOSK_URL}" &
 EOF
     log "Openbox fallback configured"
 fi
