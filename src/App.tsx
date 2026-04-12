@@ -179,7 +179,7 @@ export default function App() {
             {/* Subtitle / descriptor */}
             {parsed.subtitle && (
               <p
-                className="font-playfair italic text-white/35 leading-snug max-w-xl text-[clamp(0.75rem,2.6vw,1.25rem)]"
+                className="font-playfair italic text-white/50 leading-snug max-w-xl text-[clamp(0.85rem,2.6vw,1.25rem)]"
                 style={{ animation: "fadeIn 2s ease-out 0.3s both" }}
               >
                 {parsed.subtitle}

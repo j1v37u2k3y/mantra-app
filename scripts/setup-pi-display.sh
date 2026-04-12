@@ -17,7 +17,7 @@ set -euo pipefail
 
 TOUCH_FIX="${TOUCH_FIX:-invxy}"
 DISPLAY_ROTATE="${DISPLAY_ROTATE:-0}"
-APP_PORT="${APP_PORT:-3174}"
+APP_PORT="${APP_PORT:-5174}"
 NODE_VERSION="${NODE_VERSION:-20}"
 APP_DIR="/home/${SUDO_USER:-pi}/mantra-app"
 KIOSK_URL="http://localhost:${APP_PORT}"
