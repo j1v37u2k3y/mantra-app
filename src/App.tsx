@@ -170,7 +170,7 @@ export default function App() {
 
             {/* Main title */}
             <h1
-              className="font-playfair text-white/90 leading-snug tracking-tight text-[clamp(1.5rem,7vw,3rem)] md:text-5xl"
+              className="font-playfair text-white/90 leading-snug tracking-tight text-[clamp(2rem,10vw,3rem)] md:text-5xl"
               style={{ fontWeight: 400 }}
             >
               {parsed.title}
@@ -179,7 +179,7 @@ export default function App() {
             {/* Subtitle / descriptor */}
             {parsed.subtitle && (
               <p
-                className="font-playfair italic text-white/60 leading-snug max-w-xl text-[clamp(1rem,3.8vw,1.25rem)]"
+                className="font-playfair italic text-white/60 leading-snug max-w-xl text-[clamp(1.3rem,5.5vw,1.25rem)]"
                 style={{ animation: "fadeIn 2s ease-out 0.3s both" }}
               >
                 {parsed.subtitle}
