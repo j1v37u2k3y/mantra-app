@@ -37,7 +37,7 @@ export default function App() {
   const [mantra, setMantra] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [key, setKey] = useState(0);
-  const [rotateSeconds, setRotateSeconds] = useState<RotateInterval>(0);
+  const [rotateSeconds, setRotateSeconds] = useState<RotateInterval>(15);
   const rotateTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const applyMantra = useCallback((data: MantraResponse) => {
@@ -179,7 +179,7 @@ export default function App() {
             {/* Subtitle / descriptor */}
             {parsed.subtitle && (
               <p
-                className="font-playfair italic text-white/50 leading-snug max-w-xl text-[clamp(0.85rem,2.6vw,1.25rem)]"
+                className="font-playfair italic text-white/60 leading-snug max-w-xl text-[clamp(0.85rem,2.6vw,1.25rem)]"
                 style={{ animation: "fadeIn 2s ease-out 0.3s both" }}
               >
                 {parsed.subtitle}
