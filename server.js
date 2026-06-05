@@ -1,5 +1,5 @@
 import express from "express";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, watchFile } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join, resolve } from "path";
 import { homedir } from "os";
@@ -33,7 +33,7 @@ function loadMantras() {
   return bundled;
 }
 
-const mantras = loadMantras();
+let mantras = loadMantras();
 
 export const app = express();
 
@@ -69,5 +69,18 @@ if (isMain) {
   app.listen(PORT, () => {
     console.log(`Mantra API running on http://localhost:${PORT}`);
     console.log(`Local mantras: ${LOCAL_MANTRAS_PATH}`);
+  });
+
+  // Hot-reload: re-read the local mantras file whenever a deploy drops a new one,
+  // so the daily git sync lands on the display without a service restart.
+  // watchFile (stat-poll) is used instead of watch() on purpose: the sync replaces
+  // the file via atomic rename — and the path may be a symlink into the mantra repo —
+  // so an inode-based watch() would go stale after the swap and silently stop firing.
+  watchFile(LOCAL_MANTRAS_PATH, { interval: 5000 }, (curr, prev) => {
+    if (curr.mtimeMs === prev.mtimeMs && curr.size === prev.size) return;
+    mantras = loadMantras();
+    console.log(
+      `Reloaded mantras after ${LOCAL_MANTRAS_PATH} changed (${mantras.length} total)`
+    );
   });
 }
