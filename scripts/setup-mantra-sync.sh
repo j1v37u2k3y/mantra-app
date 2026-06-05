@@ -18,12 +18,20 @@
 #   chmod +x scripts/setup-mantra-sync.sh
 #   sudo ./scripts/setup-mantra-sync.sh
 #
+#   # private data repo (token never touches git, stored 600 on the Pi):
+#   sudo MANTRA_GIT_TOKEN=github_pat_xxx ./scripts/setup-mantra-sync.sh
+#
 # Environment variable overrides:
 #   DATA_DIR          - where the data repo lives (default: ~<user>/mantra)
 #   DATA_REPO         - data repo URL (default: j1v37u2k3y/mantra)
 #   BRANCH            - branch to track (default: main)
 #   SYNC_ON_CALENDAR  - systemd OnCalendar expr (default: daily = 00:00)
 #   APP_SERVICE       - app service to bump once at setup (default: mantra-app)
+#   MANTRA_GIT_TOKEN  - PAT for a PRIVATE data repo; enables headless auth.
+#                       Stored mode-600 at CRED_FILE, never committed. Use a
+#                       fine-grained token: Contents=read-only on the data repo.
+#   GIT_USERNAME      - username paired with the token (default: repo owner)
+#   CRED_FILE         - token store path (default: ~<user>/.config/mantra/git-credentials)
 # =============================================================================
 set -euo pipefail
 
@@ -46,6 +54,9 @@ DATA_DIR="${DATA_DIR:-${REAL_HOME}/mantra}"
 CONFIG_DIR="${REAL_HOME}/.config/mantra"
 CONFIG_FILE="${CONFIG_DIR}/mantras.json"
 TARGET_FILE="${DATA_DIR}/mantras.json"
+CRED_FILE="${CRED_FILE:-${CONFIG_DIR}/git-credentials}"
+GIT_USERNAME="${GIT_USERNAME:-$(printf '%s' "${DATA_REPO}" | sed -E 's#.*github\.com[:/]([^/]+)/.*#\1#')}"
+MANTRA_GIT_TOKEN="${MANTRA_GIT_TOKEN:-}"
 
 GIT_BIN="$(command -v git || true)"
 
@@ -72,22 +83,43 @@ fi
 log "git: ${GIT_BIN}"
 
 # =============================================================================
-# 2. Clone or update the data repo (as the real user)
+# 2. Optional: store a PAT so the headless service can fetch a private repo
+# =============================================================================
+GIT_CRED_OPT=()
+if [[ -n "${MANTRA_GIT_TOKEN}" ]]; then
+    info "Storing git credentials for private repo access (user: ${GIT_USERNAME})..."
+    sudo -u "${REAL_USER}" mkdir -p "${CONFIG_DIR}"
+    sudo -u "${REAL_USER}" install -m 600 /dev/null "${CRED_FILE}"
+    printf 'https://%s:%s@github.com\n' "${GIT_USERNAME}" "${MANTRA_GIT_TOKEN}" \
+        | sudo -u "${REAL_USER}" tee "${CRED_FILE}" >/dev/null
+    GIT_CRED_OPT=(-c "credential.helper=store --file=${CRED_FILE}")
+    log "Credential file: ${CRED_FILE} (mode 600, owner ${REAL_USER})"
+else
+    warn "No MANTRA_GIT_TOKEN set — assuming a public repo or cached credentials."
+fi
+
+# =============================================================================
+# 3. Clone or update the data repo (as the real user)
 # =============================================================================
 if [[ -d "${DATA_DIR}/.git" ]]; then
     info "Data repo exists, fetching + resetting to origin/${BRANCH}..."
-    sudo -u "${REAL_USER}" "${GIT_BIN}" -C "${DATA_DIR}" fetch --prune origin
+    sudo -u "${REAL_USER}" "${GIT_BIN}" "${GIT_CRED_OPT[@]}" -C "${DATA_DIR}" fetch --prune origin
     sudo -u "${REAL_USER}" "${GIT_BIN}" -C "${DATA_DIR}" reset --hard "origin/${BRANCH}"
 else
     info "Cloning data repo..."
-    sudo -u "${REAL_USER}" "${GIT_BIN}" clone --branch "${BRANCH}" "${DATA_REPO}" "${DATA_DIR}"
+    sudo -u "${REAL_USER}" "${GIT_BIN}" "${GIT_CRED_OPT[@]}" clone --branch "${BRANCH}" "${DATA_REPO}" "${DATA_DIR}"
 fi
 [[ -f "${TARGET_FILE}" ]] || err "Expected ${TARGET_FILE} after clone, not found"
+# Persist the helper into the repo-local config so the headless timer fetch
+# (plain `git fetch`, no -c) authenticates the same way.
+if [[ -n "${MANTRA_GIT_TOKEN}" ]]; then
+    sudo -u "${REAL_USER}" "${GIT_BIN}" -C "${DATA_DIR}" config credential.helper "store --file=${CRED_FILE}"
+fi
 ENTRIES="$(sudo -u "${REAL_USER}" python3 -c "import json;print(len(json.load(open('${TARGET_FILE}'))))" 2>/dev/null || echo '?')"
 log "Data repo ready (${ENTRIES} entries)"
 
 # =============================================================================
-# 3. Symlink the config file at the repo's mantras.json (back up a real file)
+# 4. Symlink the config file at the repo's mantras.json (back up a real file)
 # =============================================================================
 sudo -u "${REAL_USER}" mkdir -p "${CONFIG_DIR}"
 if [[ -L "${CONFIG_FILE}" ]]; then
@@ -102,7 +134,7 @@ sudo -u "${REAL_USER}" ln -sfn "${TARGET_FILE}" "${CONFIG_FILE}"
 log "Symlinked ${CONFIG_FILE} -> ${TARGET_FILE}"
 
 # =============================================================================
-# 4. Install the sync service + timer
+# 5. Install the sync service + timer
 # =============================================================================
 info "Writing /etc/systemd/system/mantra-sync.service..."
 cat > /etc/systemd/system/mantra-sync.service << EOF
@@ -140,7 +172,7 @@ systemctl enable --now mantra-sync.timer
 log "mantra-sync.timer enabled (${SYNC_ON_CALENDAR})"
 
 # =============================================================================
-# 5. Run once now + bump the app once to catch the symlink swap
+# 6. Run once now + bump the app once to catch the symlink swap
 # =============================================================================
 info "Running an initial sync..."
 systemctl start mantra-sync.service
