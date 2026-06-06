@@ -31,7 +31,7 @@
 #                       Stored mode-600 at CRED_FILE, never committed. Use a
 #                       fine-grained token: Contents=read-only on the data repo.
 #   GIT_USERNAME      - username paired with the token (default: repo owner)
-#   CRED_FILE         - token store path (default: ~<user>/.config/mantra/git-credentials)
+#   CRED_FILE         - token store path (default: ~<user>/.git-credentials — git's default store location)
 # =============================================================================
 set -euo pipefail
 
@@ -54,7 +54,7 @@ DATA_DIR="${DATA_DIR:-${REAL_HOME}/mantra}"
 CONFIG_DIR="${REAL_HOME}/.config/mantra"
 CONFIG_FILE="${CONFIG_DIR}/mantras.json"
 TARGET_FILE="${DATA_DIR}/mantras.json"
-CRED_FILE="${CRED_FILE:-${CONFIG_DIR}/git-credentials}"
+CRED_FILE="${CRED_FILE:-${REAL_HOME}/.git-credentials}"
 GIT_USERNAME="${GIT_USERNAME:-$(printf '%s' "${DATA_REPO}" | sed -E 's#.*github\.com[:/]([^/]+)/.*#\1#')}"
 MANTRA_GIT_TOKEN="${MANTRA_GIT_TOKEN:-}"
 
@@ -88,12 +88,15 @@ log "git: ${GIT_BIN}"
 GIT_CRED_OPT=()
 if [[ -n "${MANTRA_GIT_TOKEN}" ]]; then
     info "Storing git credentials for private repo access (user: ${GIT_USERNAME})..."
-    sudo -u "${REAL_USER}" mkdir -p "${CONFIG_DIR}"
-    sudo -u "${REAL_USER}" install -m 600 /dev/null "${CRED_FILE}"
-    printf 'https://%s:%s@github.com\n' "${GIT_USERNAME}" "${MANTRA_GIT_TOKEN}" \
-        | sudo -u "${REAL_USER}" tee "${CRED_FILE}" >/dev/null
+    # Store the PAT in git's default store (~/.git-credentials) WITHOUT clobbering any other
+    # hosts already there: `credential approve` updates only the github.com entry and creates
+    # the file mode-600 if absent. The absolute --file makes this work under `sudo -u`
+    # regardless of HOME.
+    printf 'protocol=https\nhost=github.com\nusername=%s\npassword=%s\n\n' \
+        "${GIT_USERNAME}" "${MANTRA_GIT_TOKEN}" \
+        | sudo -u "${REAL_USER}" "${GIT_BIN}" -c "credential.helper=store --file=${CRED_FILE}" credential approve
     GIT_CRED_OPT=(-c "credential.helper=store --file=${CRED_FILE}")
-    log "Credential file: ${CRED_FILE} (mode 600, owner ${REAL_USER})"
+    log "Credential stored in ${CRED_FILE} (mode 600, owner ${REAL_USER})"
 else
     warn "No MANTRA_GIT_TOKEN set — assuming a public repo or cached credentials."
 fi
@@ -110,10 +113,12 @@ else
     sudo -u "${REAL_USER}" "${GIT_BIN}" "${GIT_CRED_OPT[@]}" clone --branch "${BRANCH}" "${DATA_REPO}" "${DATA_DIR}"
 fi
 [[ -f "${TARGET_FILE}" ]] || err "Expected ${TARGET_FILE} after clone, not found"
-# Persist the helper into the repo-local config so the headless timer fetch
-# (plain `git fetch`, no -c) authenticates the same way.
+# Persist a plain `store` helper into the repo-local config so the headless timer fetch
+# (plain `git fetch`, no -c) authenticates the same way. The systemd service runs as
+# User=${REAL_USER} (HOME=${REAL_HOME}), so plain `store` resolves to ~/.git-credentials —
+# the same file written above.
 if [[ -n "${MANTRA_GIT_TOKEN}" ]]; then
-    sudo -u "${REAL_USER}" "${GIT_BIN}" -C "${DATA_DIR}" config credential.helper "store --file=${CRED_FILE}"
+    sudo -u "${REAL_USER}" "${GIT_BIN}" -C "${DATA_DIR}" config credential.helper "store"
 fi
 ENTRIES="$(sudo -u "${REAL_USER}" python3 -c "import json;print(len(json.load(open('${TARGET_FILE}'))))" 2>/dev/null || echo '?')"
 log "Data repo ready (${ENTRIES} entries)"
