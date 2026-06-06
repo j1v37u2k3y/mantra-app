@@ -5,9 +5,11 @@ typography-forward, minimal UI. Deploys both as a full-stack Express app and as 
 
 ## Architecture
 
-- **`server.js`** — Express server on port `3174`. Loads `src/data/mantras.json` once at startup, exposes
-  `GET /api/mantra` and `GET /api/mantra/:index`, and serves the Vite `dist/` build in production. Exports `app` so
-  tests can hit it with supertest; only calls `.listen()` when run directly.
+- **`server.js`** — Express server on port `3174`. Loads `src/data/mantras.json` at startup AND merges a personal
+  override file (`${MANTRA_FILE:-~/.config/mantra/mantras.json}`) that it **hot-reloads** via `watchFile` (see
+  § Personal Mantras & Hands-Off Deploy). Exposes `GET /api/mantra` and `GET /api/mantra/:index`, and serves the Vite
+  `dist/` build in production. Exports `app` so tests can hit it with supertest; only calls `.listen()` when run
+  directly.
 - **`src/App.tsx`** — Single-component React UI. Tries `/api/mantra` first, falls back to the bundled
   `src/data/mantras.json` when the API is unreachable (this is what makes the GitHub Pages build work without a
   backend).
@@ -65,9 +67,12 @@ npm run ci         # typecheck + test + build, as CI runs it
 
 ### Adding a mantra
 
-Edit `src/data/mantras.json`. In dev, restart the server so it picks up the change (the file is read once at
-startup in `server.js`). The client also bundles this file at build time for the static fallback — run
+Edit `src/data/mantras.json` — the **bundled** list. In dev, restart the server so it picks up the change (this file
+is read once at startup in `server.js`). The client also bundles it at build time for the static fallback — run
 `npm run build` to refresh that.
+
+To add a mantra to the **live Pi kiosk** instead, push to the personal data repo — it hot-reloads onto the display
+with no restart. See § Personal Mantras & Hands-Off Deploy.
 
 ### Changing the mantra parser
 
@@ -84,6 +89,49 @@ meditative. Keep the 480x320 constraint in mind for any layout change.
 
 Not needed. `src/data/mantras.json` is the source of truth. If the list grows beyond ~100 entries, consider
 reading it on each request instead of at startup so edits don't require restarts.
+
+## Personal Mantras & Hands-Off Deploy (Raspberry Pi kiosk)
+
+The production target is a **Raspberry Pi 4 + 3.5" 480x320 display** running Chromium in kiosk mode against the local
+Express server. Two things beyond the bundled `src/data/mantras.json` make mantra updates hands-off.
+
+### Personal override file + hot-reload
+
+`server.js` merges a **personal override** at `${MANTRA_FILE:-~/.config/mantra/mantras.json}` (appended after the
+bundled list) when it exists and parses as a JSON array. It's **server-only** — never in the GitHub Pages build, so
+personal mantras stay private. The server **hot-reloads** it: `watchFile(LOCAL_MANTRAS_PATH, { interval: 5000 })`
+re-reads on change, no restart.
+
+- `watchFile` (stat-poll), NOT `fs.watch` (inode), is deliberate: the deploy swaps the file via atomic rename through a
+  **symlink**, which makes an inode watcher go stale. Don't switch it to `fs.watch`.
+- Hot-reload applies ONLY to the override file. The **bundled** `src/data/mantras.json` is still read once at startup.
+
+### The two Pi installers (`scripts/`)
+
+- **`setup-pi-display.sh`** — provisions the kiosk (SPI/`piscreen` overlay, Node + build, `mantra-app.service`,
+  labwc/openbox autostart for Chromium). `--password-store=basic` is **load-bearing**: without it the GNOME keyring
+  unlock prompt covers the 480x320 screen with an on-screen keyboard and the mantra never renders.
+- **`setup-mantra-sync.sh`** — the hands-off deploy. The personal list lives in a **separate data repo** (default
+  `j1v37u2k3y/mantra`, override `DATA_REPO`). On the Pi it clones the data repo to `~/mantra`, symlinks
+  `~/.config/mantra/mantras.json` → that clone's `mantras.json`, and installs `mantra-sync.service` (`oneshot`:
+  `git fetch --prune` + `git reset --hard origin/main` — remote is truth, never `git pull`) on a daily
+  `mantra-sync.timer`.
+
+**The loop, zero restarts:** push to the data repo → daily timer fetch/reset → symlinked file changes → `watchFile`
+reloads → display updates.
+
+### Private data repo (PAT)
+
+The data repo is **private**, so the headless timer authenticates with a fine-grained GitHub PAT:
+`sudo MANTRA_GIT_TOKEN=github_pat_xxx ./scripts/setup-mantra-sync.sh`. The installer writes it to git's default store
+`~/.git-credentials` (mode 600) via `git credential approve` (non-destructive — won't clobber other hosts), and sets the
+data repo's repo-local `credential.helper` to plain `store`.
+
+- **PAT gotcha:** a fine-grained PAT needs **Contents: Read** on the data repo. Fresh tokens default to Metadata-only,
+  which authenticates but makes `git fetch` 403 with `"Write access to repository not granted"` (GitHub's generic
+  wording — fetch only needs *read*). Add Contents: Read.
+- **Don't commit infra coordinates.** Committed files reference the Pi via a `mantra-pi` ssh alias only; the real
+  host/user/IP live in the operator's local `~/.ssh/config`, never in the repo.
 
 ## Ports
 
@@ -106,6 +154,10 @@ Three GitHub Actions workflows:
 - **`.github/workflows/release.yml`** — on push to `main`, runs `semantic-release` (config in `.releaserc.json`).
   Uses conventional commits to decide the next SemVer bump, writes `CHANGELOG.md`, tags the release, and creates a
   GitHub release. Pushes a `chore(release): x.y.z [skip ci]` commit back to `main`.
+
+None of these deploy the app to the **Raspberry Pi kiosk** — that's a Pi-side **pull** (the `mantra-sync.timer`), not a
+cloud push. There's deliberately no hosted-runner CD reaching the Pi (a cloud runner can't reach a home-LAN device
+without exposing it). See § Personal Mantras & Hands-Off Deploy.
 
 ### Conventional commits
 
