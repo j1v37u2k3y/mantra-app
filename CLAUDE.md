@@ -106,7 +106,7 @@ re-reads on change, no restart.
   **symlink**, which makes an inode watcher go stale. Don't switch it to `fs.watch`.
 - Hot-reload applies ONLY to the override file. The **bundled** `src/data/mantras.json` is still read once at startup.
 
-### The two Pi installers (`scripts/`)
+### The three Pi installers (`scripts/`)
 
 - **`setup-pi-display.sh`** — provisions the kiosk (SPI/`piscreen` overlay, Node + build, `mantra-app.service`,
   labwc/openbox autostart for Chromium). `--password-store=basic` is **load-bearing**: without it the GNOME keyring
@@ -116,9 +116,19 @@ re-reads on change, no restart.
   `~/.config/mantra/mantras.json` → that clone's `mantras.json`, and installs `mantra-sync.service` (`oneshot`:
   `git fetch --prune` + `git reset --hard origin/main` — remote is truth, never `git pull`) on a daily
   `mantra-sync.timer`.
+- **`setup-mantra-health.sh`** — the drift watchdog (added after a 2026-06-17 silent-sync-failure incident: sync was
+  down for hours while every unit still showed `active`). Installs `/usr/local/bin/mantra-health` (the check logic, in
+  `scripts/mantra-health.sh`), a `mantra-health.timer` (~6h), and `mantra-health-alert.service` wired as a
+  **non-destructive drop-in** (`mantra-sync.service.d/10-onfailure.conf` → `OnFailure=`) so a failed sync pushes
+  instantly. Alerts go to **ntfy.sh** (`NTFY_TOPIC` is **required** — it's the channel; stored mode-600 in
+  `~/.config/mantra/health.env`). The check is **observe-only** — it fetches + compares `HEAD` vs `origin/main` and
+  reads `systemctl is-failed`, but **never** resets or pulls (that's the sync's job). Hard faults (failed unit,
+  corrupt/missing clone, fetch error) alert immediately; plain drift only alerts after it persists past
+  `DRIFT_THRESHOLD_SEC` (default 26h — must exceed the daily sync gap or every normal push false-alarms; the 6h timer
+  is the *check* cadence, not the *alert* threshold).
 
 **The loop, zero restarts:** push to the data repo → daily timer fetch/reset → symlinked file changes → `watchFile`
-reloads → display updates.
+reloads → display updates. **`mantra-health` watches that loop** and pushes to your phone if a deploy stops landing.
 
 ### Private data repo (PAT)
 

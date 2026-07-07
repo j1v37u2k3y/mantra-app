@@ -167,6 +167,32 @@ sudo MANTRA_GIT_TOKEN=github_pat_xxx ./scripts/setup-mantra-sync.sh
 > default *Metadata* permission authenticates but `git fetch` returns `403 "Write access to repository not
 > granted"` — add **Contents: Read** to fix it.
 
+### Drift monitor (mantra-health)
+
+The hot-reload loop above is silent when it *works* — and was also silent when it **broke**: a sync can fail for hours
+(corrupted clone, network, expired PAT) while `mantra-app.service` and `mantra-sync.timer` both still report `active`,
+so the display goes stale with nothing to flag it. `scripts/setup-mantra-health.sh` installs a watchdog that pushes to
+your phone via [ntfy.sh](https://ntfy.sh) when the deploy is no longer current:
+
+```bash
+sudo NTFY_TOPIC=mantra-pi-7h3k9x ./scripts/setup-mantra-health.sh
+```
+
+Two complementary signals:
+
+- **Instant path** — a systemd drop-in adds `OnFailure=mantra-health-alert.service` to `mantra-sync.service`, so a
+  failed sync pushes the *moment* it happens.
+- **Catch-all** — `mantra-health.timer` (every ~6h) fetches and compares local `HEAD` vs `origin/main` and checks
+  `systemctl is-failed mantra-sync.service`. A hard fault (failed unit, corrupt/missing clone, fetch error) alerts
+  immediately; plain drift only alerts once it **persists past `DRIFT_THRESHOLD_SEC`** (default **26h** — above a normal
+  daily sync gap, so a routine push→deploy delay never false-alarms). Re-alerts are throttled to once/day, and a
+  recovery sends an all-clear.
+
+Pick a long, unguessable `NTFY_TOPIC` — it's the alert channel (anyone who knows it can read and send your alerts) — and
+subscribe to it in the ntfy phone app. Config is written mode-600 to `~/.config/mantra/health.env`; the check itself is
+**observe-only** (it never resets or pulls — that stays the daily sync's job). The installer ends with a test push so
+you can confirm your phone is subscribed.
+
 ## Releases (semantic-release)
 
 On every push to `main`, `release.yml` runs [semantic-release](https://semantic-release.gitbook.io/). Commit messages
