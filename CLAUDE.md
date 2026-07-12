@@ -125,10 +125,20 @@ re-reads on change, no restart.
   reads `systemctl is-failed`, but **never** resets or pulls (that's the sync's job). Hard faults (failed unit,
   corrupt/missing clone, fetch error) alert immediately; plain drift only alerts after it persists past
   `DRIFT_THRESHOLD_SEC` (default 26h — must exceed the daily sync gap or every normal push false-alarms; the 6h timer
-  is the *check* cadence, not the *alert* threshold).
+  is the *check* cadence, not the *alert* threshold). The **same installer** also wires the positive counterpart below.
+- **`mantra-notify-update.sh`** (installed by `setup-mantra-health.sh`, not a separate installer) — the good-news ping.
+  A second **non-destructive drop-in** (`mantra-sync.service.d/20-notify-update.conf`) adds
+  `ExecStartPost=-/usr/local/bin/mantra-notify-update` **and** `EnvironmentFile=-…/health.env` (the sync unit has no
+  env of its own, so the ping needs it re-declared to see `NTFY_TOPIC`). After every successful sync it compares the
+  git **blob** of `mantras.json` to a `last-notified-blob` marker; if it actually changed it pushes *"N mantras now
+  live"* listing what was added (`+`) and removed (`-`), then advances the marker **only on a successful push** (so a
+  failed ping retries next sync). Silent on no-op syncs and on commits that don't touch `mantras.json`. Both `-`
+  prefixes are load-bearing: a notify hiccup (or a missing `health.env`) must never fail `mantra-sync` and falsely trip
+  the `OnFailure` alert above. Observe-only, same as `mantra-health`.
 
 **The loop, zero restarts:** push to the data repo → daily timer fetch/reset → symlinked file changes → `watchFile`
-reloads → display updates. **`mantra-health` watches that loop** and pushes to your phone if a deploy stops landing.
+reloads → display updates. **`mantra-health` watches that loop** and pushes to your phone if a deploy stops landing;
+**`mantra-notify-update` confirms the happy path** — a phone ping naming the new mantras each time one actually deploys.
 
 ### Private data repo (PAT)
 
