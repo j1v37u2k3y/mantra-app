@@ -188,3 +188,10 @@ If you want to change how versioning is decided, edit `.releaserc.json`.
   prevents `**Bold**` from getting one of its stars stripped. Don't relax that regex without updating the tests.
 - **`VITE_BASE`** defaults to `/` for local dev/preview so the Express server still serves assets correctly. Only
   the CI/Pages workflow sets it to `/mantra-app/`.
+- **Testing `mantra-health` by hand no-ops silently — run it through systemd.** The check reads `NTFY_TOPIC` from
+  systemd's `EnvironmentFile` (`~/.config/mantra/health.env`, mode 600). Invoked bare from a shell that env is NOT
+  loaded, so `publish()` prints `NTFY_TOPIC unset — would alert…` and sends nothing — by design, it never crashes.
+  To actually fire it, go through systemd (`sudo systemctl start mantra-health-alert.service` for the instant path,
+  or `mantra-health.service` for the scheduled check), or source the env first
+  (`set -a; . ~/.config/mantra/health.env; set +a; mantra-health --test`). Don't chase a "dead" push before checking
+  which context it ran in — this exact confusion cost a debugging round on 2026-07-12.

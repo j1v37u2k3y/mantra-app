@@ -193,6 +193,14 @@ subscribe to it in the ntfy phone app. Config is written mode-600 to `~/.config/
 **observe-only** (it never resets or pulls — that stays the daily sync's job). The installer ends with a test push so
 you can confirm your phone is subscribed.
 
+**Testing by hand — go through systemd, not a bare command.** `mantra-health` reads `NTFY_TOPIC` from systemd's
+`EnvironmentFile`, so running it straight from a shell (`mantra-health --onfailure`) finds no topic and safely no-ops
+with `NTFY_TOPIC unset — would alert…` instead of pushing. To actually send a test, run it as a unit —
+`sudo systemctl start mantra-health-alert.service` (instant path) or `sudo systemctl start mantra-health.service`
+(scheduled check) — or source the env first: `set -a; . ~/.config/mantra/health.env; set +a; mantra-health --test`.
+Confirm delivery independent of your phone by opening `https://ntfy.sh/<your-topic>` in a browser — sent messages show
+in the topic history.
+
 ## Releases (semantic-release)
 
 On every push to `main`, `release.yml` runs [semantic-release](https://semantic-release.gitbook.io/). Commit messages
