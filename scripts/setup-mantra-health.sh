@@ -7,12 +7,13 @@
 # 2026-06-17 failure: sync down for hours, every dashboard green). Installs:
 #
 #   1. /usr/local/bin/mantra-health           (the check + ntfy alert logic)
+#      /usr/local/bin/mantra-notify-update    (positive "new mantras landed" ping)
 #   2. mantra-health.service  (oneshot)        the scheduled check
 #      mantra-health.timer    (every ~6h)      runs it, Persistent=true
 #   3. mantra-health-alert.service (oneshot)    the instant path
-#   4. mantra-sync drop-in: OnFailure=mantra-health-alert.service
-#      so a failed sync pushes the moment it happens (non-destructive — a
-#      systemd drop-in, the sync unit itself is untouched).
+#   4. mantra-sync drop-ins (non-destructive — the sync unit itself is untouched):
+#      10-onfailure.conf      OnFailure=mantra-health-alert.service (failed sync → alert)
+#      20-notify-update.conf  ExecStartPost + EnvironmentFile       (changed mantras.json → ping)
 #
 # Run on the Pi via SSH (NTFY_TOPIC is required — it's the whole alert channel):
 #   chmod +x scripts/setup-mantra-health.sh
@@ -66,8 +67,11 @@ HEALTH_ENV="${CONFIG_DIR}/health.env"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HEALTH_SRC="${SCRIPT_DIR}/mantra-health.sh"
 HEALTH_BIN="/usr/local/bin/mantra-health"
+NOTIFY_SRC="${SCRIPT_DIR}/mantra-notify-update.sh"
+NOTIFY_BIN="/usr/local/bin/mantra-notify-update"
 
 [[ -f "${HEALTH_SRC}" ]] || err "Expected ${HEALTH_SRC} next to this installer, not found"
+[[ -f "${NOTIFY_SRC}" ]] || err "Expected ${NOTIFY_SRC} next to this installer, not found"
 
 echo ""
 echo "==========================================="
@@ -87,6 +91,8 @@ echo ""
 # =============================================================================
 install -m 0755 "${HEALTH_SRC}" "${HEALTH_BIN}"
 log "Installed ${HEALTH_BIN}"
+install -m 0755 "${NOTIFY_SRC}" "${NOTIFY_BIN}"
+log "Installed ${NOTIFY_BIN}"
 
 # =============================================================================
 # 2. Write the config EnvironmentFile (600 — NTFY_TOPIC is a capability)
@@ -163,8 +169,26 @@ if systemctl list-unit-files | grep -q "^${SYNC_UNIT}"; then
 OnFailure=mantra-health-alert.service
 EOF
     log "Wired ${SYNC_UNIT} OnFailure -> mantra-health-alert.service (drop-in)"
+
+    # Positive path: after a successful sync, ping if mantras.json actually changed.
+    # EnvironmentFile is additive here so the ExecStartPost inherits NTFY_TOPIC / DATA_DIR /
+    # STATE_DIR from health.env — the sync unit itself has NO EnvironmentFile. Both the
+    # ExecStartPost `-` and the EnvironmentFile `-` keep a notify hiccup (or a missing
+    # health.env) from failing the sync and falsely tripping the OnFailure alert above.
+    cat > "${DROPIN_DIR}/20-notify-update.conf" << EOF
+[Service]
+EnvironmentFile=-${HEALTH_ENV}
+ExecStartPost=-${NOTIFY_BIN}
+EOF
+    log "Wired ${SYNC_UNIT} ExecStartPost -> ${NOTIFY_BIN} (drop-in)"
+
+    # Seed the marker to the current blob so the first REAL change after install pings,
+    # rather than the install-time state being mistaken for a change on the next sync.
+    sudo -u "${REAL_USER}" \
+        DATA_DIR="${DATA_DIR}" STATE_DIR="${STATE_DIR}" BRANCH="${BRANCH}" \
+        "${NOTIFY_BIN}" --seed || warn "notify marker seed skipped (data repo not ready yet)"
 else
-    warn "${SYNC_UNIT} not found — skipping OnFailure wiring. Run setup-mantra-sync.sh first for the instant path."
+    warn "${SYNC_UNIT} not found — skipping OnFailure + notify wiring. Run setup-mantra-sync.sh first."
 fi
 
 # =============================================================================
@@ -199,6 +223,7 @@ echo ""
 log "Subscribe on your phone:  ntfy app -> add topic '${NTFY_TOPIC}'"
 log "Instant path:             a failed ${SYNC_UNIT} pushes immediately"
 log "Catch-all:                every 6h; alerts if drift persists > $(( DRIFT_THRESHOLD_SEC / 3600 ))h"
+log "Update ping:              a changed mantras.json on sync pushes a 'new mantras live' note"
 echo ""
 info "Useful commands:"
 echo "  systemctl list-timers mantra-health        # next scheduled check"

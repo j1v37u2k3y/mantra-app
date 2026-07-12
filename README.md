@@ -188,6 +188,15 @@ Two complementary signals:
   daily sync gap, so a routine push→deploy delay never false-alarms). Re-alerts are throttled to once/day, and a
   recovery sends an all-clear.
 
+And a positive counterpart, installed by the **same** script:
+
+- **Update ping** — a second drop-in (`mantra-sync.service.d/20-notify-update.conf`) runs `mantra-notify-update` after
+  every successful sync. When the pulled `mantras.json` **blob actually changed**, it pushes a *"N mantras now live"*
+  note listing what was added (`+`) and removed (`-`) — so you get a confirmation on your phone when a new mantra
+  deploys, not just when something breaks. It's silent on no-op syncs and on commits that don't touch `mantras.json`,
+  advances its marker only on a successful push (a failed ping retries next sync), and can never fail the sync itself
+  (the `-` prefix on both the `ExecStartPost` and its `EnvironmentFile`).
+
 Pick a long, unguessable `NTFY_TOPIC` — it's the alert channel (anyone who knows it can read and send your alerts) — and
 subscribe to it in the ntfy phone app. Config is written mode-600 to `~/.config/mantra/health.env`; the check itself is
 **observe-only** (it never resets or pulls — that stays the daily sync's job). The installer ends with a test push so
