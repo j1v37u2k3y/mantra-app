@@ -183,7 +183,7 @@ info "Running an initial sync..."
 systemctl start mantra-sync.service
 systemctl --no-pager status mantra-sync.service || true
 
-if systemctl list-unit-files | grep -q "^${APP_SERVICE}.service"; then
+if systemctl cat "${APP_SERVICE}.service" >/dev/null 2>&1; then
     info "Restarting ${APP_SERVICE} once to pick up the new symlink..."
     systemctl restart "${APP_SERVICE}.service"
     log "${APP_SERVICE} restarted (subsequent syncs hot-reload — no restart needed)"
