@@ -161,7 +161,7 @@ EOF
 # 4. Wire the instant path: mantra-sync OnFailure -> the alert service
 #    Drop-in, not a rewrite — leaves setup-mantra-sync.sh's unit untouched.
 # =============================================================================
-if systemctl list-unit-files | grep -q "^${SYNC_UNIT}"; then
+if systemctl cat "${SYNC_UNIT}" >/dev/null 2>&1; then
     DROPIN_DIR="/etc/systemd/system/${SYNC_UNIT}.d"
     mkdir -p "${DROPIN_DIR}"
     cat > "${DROPIN_DIR}/10-onfailure.conf" << EOF
