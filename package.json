@@ -17,7 +17,7 @@
     "ci": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
-    "express": "^4.22.2"
+    "express": "^5.2.1"
   },
   "devDependencies": {
     "@semantic-release/changelog": "^6.0.3",
