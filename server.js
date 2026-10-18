@@ -53,15 +53,15 @@ app.get("/api/mantra/:index", (req, res) => {
   res.json({ mantra: mantras[index], index, total: mantras.length });
 });
 
-app.get("*", (_req, res) => {
-  const distIndex = join(__dirname, "dist", "index.html");
-  if (!existsSync(distIndex)) {
+app.get("/{*splat}", (_req, res) => {
+  const distDir = join(__dirname, "dist");
+  if (!existsSync(join(distDir, "index.html"))) {
     res
       .status(404)
       .send("No production build found. Run `npm run build` first, or use `npm run dev` and open http://localhost:5174.");
     return;
   }
-  res.sendFile(distIndex);
+  res.sendFile("index.html", { root: distDir });
 });
 
 const isMain = resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url);
