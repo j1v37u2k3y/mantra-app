@@ -3,7 +3,7 @@
 A minimal, meditative web app that serves a random personal mantra on each visit. Dark aesthetic, typography-forward,
 single-purpose. Runs as a full-stack Express app locally and as a static site on GitHub Pages.
 
-![React](https://img.shields.io/badge/React-19-61dafb) ![Vite](https://img.shields.io/badge/Vite-6-646cff) ![Tailwind](https://img.shields.io/badge/Tailwind-3-38bdf8) ![Express](https://img.shields.io/badge/Express-4-000000) ![Tests](https://img.shields.io/badge/tests-vitest-6E9F18) ![Release](https://img.shields.io/badge/release-semantic--release-e10079)
+![React](https://img.shields.io/badge/React-19-61dafb) ![Vite](https://img.shields.io/badge/Vite-6-646cff) ![Tailwind](https://img.shields.io/badge/Tailwind-3-38bdf8) ![Express](https://img.shields.io/badge/Express-5-000000) ![Tests](https://img.shields.io/badge/tests-vitest-6E9F18) ![Release](https://img.shields.io/badge/release-semantic--release-e10079)
 
 ## What It Does
 
@@ -233,7 +233,7 @@ semantic-release will:
 ## Tech Stack
 
 - **Frontend:** React 19, TypeScript (strict), Vite 6, Tailwind CSS 3
-- **Backend:** Express 4 (Node.js ESM)
+- **Backend:** Express 5 (Node.js ESM)
 - **Tests:** Vitest + supertest
 - **Release:** semantic-release (`@semantic-release/changelog`, `@semantic-release/git`, `@semantic-release/github`)
 - **CI:** GitHub Actions
